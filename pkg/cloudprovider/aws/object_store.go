@@ -43,6 +43,7 @@ const (
 	bucketKey            = "bucket"
 	signatureVersionKey  = "signatureVersion"
 	credentialProfileKey = "profile"
+	customCABundleKey    = "customCABundle"
 )
 
 type s3Interface interface {
@@ -83,6 +84,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		s3ForcePathStyleKey,
 		signatureVersionKey,
 		credentialProfileKey,
+		customCABundleKey,
 	); err != nil {
 		return err
 	}
@@ -95,6 +97,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		s3ForcePathStyleVal = config[s3ForcePathStyleKey]
 		signatureVersion    = config[signatureVersionKey]
 		credentialProfile   = config[credentialProfileKey]
+		customCABundle      = config[customCABundleKey]
 
 		// note that bucket is automatically added to the config map
 		// by the server from the ObjectStorageProviderConfig so
@@ -127,7 +130,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		return err
 	}
 
-	serverSession, err := getSession(serverConfig, credentialProfile)
+	serverSession, err := getSession(serverConfig, credentialProfile, customCABundle)
 	if err != nil {
 		return err
 	}
@@ -148,7 +151,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		if err != nil {
 			return err
 		}
-		publicSession, err := getSession(publicConfig, credentialProfile)
+		publicSession, err := getSession(publicConfig, credentialProfile, customCABundle)
 		if err != nil {
 			return err
 		}
