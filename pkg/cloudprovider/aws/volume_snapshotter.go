@@ -17,8 +17,6 @@ limitations under the License.
 package aws
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"regexp"
@@ -51,16 +49,8 @@ type VolumeSnapshotter struct {
 }
 
 // takes AWS credential config & a profile to create a new session
-func getSession(config *aws.Config, profile string, customCABundle string) (*session.Session, error) {
-	sessionOptions := session.Options{Config: *config, Profile: profile}
-	if len(customCABundle) > 0 {
-		customCA, err := base64.StdEncoding.DecodeString(customCABundle)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		sessionOptions.CustomCABundle = bytes.NewReader(customCA)
-	}
-	sess, err := session.NewSessionWithOptions(sessionOptions)
+func getSession(options *session.Options) (*session.Session, error) {
+	sess, err := session.NewSessionWithOptions(*options)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -88,8 +78,12 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 	}
 
 	awsConfig := aws.NewConfig().WithRegion(region)
+	sessionOptions := session.Options{
+		Config:                  *awsConfig,
+		Profile:                 credentialProfile,
+	}
 
-	sess, err := getSession(awsConfig, credentialProfile, "")
+	sess, err := getSession(&sessionOptions)
 	if err != nil {
 		return err
 	}

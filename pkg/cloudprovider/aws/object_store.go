@@ -17,7 +17,12 @@ limitations under the License.
 package aws
 
 import (
+	"bytes"
+	"crypto/tls"
+	"encoding/base64"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"time"
@@ -44,6 +49,7 @@ const (
 	signatureVersionKey  = "signatureVersion"
 	credentialProfileKey = "profile"
 	customCABundleKey    = "customCABundle"
+	insecureKey          = "insecure"
 )
 
 type s3Interface interface {
@@ -85,6 +91,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		signatureVersionKey,
 		credentialProfileKey,
 		customCABundleKey,
+		insecureKey,
 	); err != nil {
 		return err
 	}
@@ -97,7 +104,8 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		s3ForcePathStyleVal = config[s3ForcePathStyleKey]
 		signatureVersion    = config[signatureVersionKey]
 		credentialProfile   = config[credentialProfileKey]
-		customCABundle      = config[customCABundleKey]
+		customCABundleVal   = config[customCABundleKey]
+		insecureVal         = config[insecureKey]
 
 		// note that bucket is automatically added to the config map
 		// by the server from the ObjectStorageProviderConfig so
@@ -105,6 +113,8 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		// config.
 		bucket           = config[bucketKey]
 		s3ForcePathStyle bool
+		insecure         bool
+		customCABundle   []byte
 		err              error
 	)
 
@@ -112,6 +122,14 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		if s3ForcePathStyle, err = strconv.ParseBool(s3ForcePathStyleVal); err != nil {
 			return errors.Wrapf(err, "could not parse %s (expected bool)", s3ForcePathStyleKey)
 		}
+	}
+	if insecureVal != "" {
+		if insecure, err = strconv.ParseBool(insecureVal); err != nil {
+			return errors.Wrapf(err, "could not parse %s (expected bool)", insecureKey)
+		}
+	}
+	if customCABundle, err = base64.StdEncoding.DecodeString(customCABundleVal); err != nil {
+		return errors.Wrapf(err, "could not parse %s (expected b64 encoded certificate)", customCABundleKey)
 	}
 
 	// AWS (not an alternate S3-compatible API) and region not
@@ -125,12 +143,12 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		}
 	}
 
-	serverConfig, err := newAWSConfig(s3URL, region, s3ForcePathStyle)
+	serverOptions, err := newAWSSessionOptions(s3URL, region, s3ForcePathStyle, credentialProfile, insecure, customCABundle)
 	if err != nil {
 		return err
 	}
 
-	serverSession, err := getSession(serverConfig, credentialProfile, customCABundle)
+	serverSession, err := getSession(serverOptions)
 	if err != nil {
 		return err
 	}
@@ -147,11 +165,11 @@ func (o *ObjectStore) Init(config map[string]string) error {
 	}
 
 	if publicURL != "" {
-		publicConfig, err := newAWSConfig(publicURL, region, s3ForcePathStyle)
+		publicOptions, err := newAWSSessionOptions(publicURL, region, s3ForcePathStyle, credentialProfile, insecure, customCABundle)
 		if err != nil {
 			return err
 		}
-		publicSession, err := getSession(publicConfig, credentialProfile, customCABundle)
+		publicSession, err := getSession(publicOptions)
 		if err != nil {
 			return err
 		}
@@ -163,10 +181,15 @@ func (o *ObjectStore) Init(config map[string]string) error {
 	return nil
 }
 
-func newAWSConfig(url, region string, forcePathStyle bool) (*aws.Config, error) {
+func newAWSSessionOptions(url, region string, forcePathStyle bool, profile string, insecure bool, customCABundle []byte) (*session.Options, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecure},
+	}
+	client := &http.Client{Transport: transport}
 	awsConfig := aws.NewConfig().
 		WithRegion(region).
-		WithS3ForcePathStyle(forcePathStyle)
+		WithS3ForcePathStyle(forcePathStyle).
+		WithHTTPClient(client)
 
 	if url != "" {
 		if !IsValidS3URLScheme(url) {
@@ -186,7 +209,12 @@ func newAWSConfig(url, region string, forcePathStyle bool) (*aws.Config, error) 
 		)
 	}
 
-	return awsConfig, nil
+	sessionOptions := session.Options{Config: *awsConfig, Profile: profile}
+	if len(customCABundle) > 0 {
+		sessionOptions.CustomCABundle = bytes.NewReader(customCABundle)
+	}
+
+	return &sessionOptions, nil
 }
 
 func (o *ObjectStore) PutObject(bucket, key string, body io.Reader) error {
