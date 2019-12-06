@@ -218,6 +218,10 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 	}
 	// ignore error since there's nothing we can do and it's a temp file.
 	defer os.Remove(file)
+	//loc, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+	//if err != nil {
+	//	return nil, errors.Wrap(err, "error getting backup storage location")
+	//}
 
 	resticCmd := restic.BackupCommand(
 		req.Spec.RepoIdentifier,
@@ -225,6 +229,19 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 		path,
 		req.Spec.Tags,
 	)
+	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
+		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+		if (bsl != nil) && (err == nil) {
+			if bsl.Spec.Config["customCABundle"] != "" {
+				caFileName, err := restic.TempCABundleFile(bsl, resticCmd.RepoName(), c.fileSystem)
+				resticCmd.CABundleFile = caFileName
+				if err != nil {
+					return err
+				}
+				//defer os.Remove(caFile)
+			}
+		}
+	}
 
 	// if this is azure, set resticCmd.Env appropriately
 	var env []string

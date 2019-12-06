@@ -255,6 +255,23 @@ func (rm *repositoryManager) exec(cmd *Command, backupLocation string) error {
 
 	cmd.PasswordFile = file
 
+	if strings.HasPrefix(cmd.RepoIdentifier, "s3") {
+		if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {
+			return errors.New("timed out waiting for cache to sync")
+		}
+		bsl, err := rm.backupLocationLister.BackupStorageLocations(rm.namespace).Get(backupLocation)
+		if (bsl != nil) && (err == nil) {
+			if bsl.Spec.Config["customCABundle"] != "" {
+				caFileName, err := TempCABundleFile(bsl, cmd.RepoName(), rm.fileSystem)
+				cmd.CABundleFile = caFileName
+				if err != nil {
+					return err
+				}
+				//defer os.Remove(caFile)
+			}
+		}
+	}
+
 	if strings.HasPrefix(cmd.RepoIdentifier, "azure") {
 		if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {
 			return errors.New("timed out waiting for cache to sync")
