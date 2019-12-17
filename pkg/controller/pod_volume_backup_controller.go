@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -229,6 +230,7 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 		path,
 		req.Spec.Tags,
 	)
+	insecure := false
 	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
 		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
 		if (bsl != nil) && (err == nil) {
@@ -240,6 +242,11 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 				}
 				//defer os.Remove(caFile)
 			}
+			insecure, err = strconv.ParseBool(bsl.Spec.Config["insecure"])
+			if err != nil {
+				return err
+			}
+			resticCmd.SkipSSLVerify = insecure
 		}
 	}
 
@@ -267,7 +274,7 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 
 	var snapshotID string
 	if !emptySnapshot {
-		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env)
+		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env, insecure)
 		if err != nil {
 			log.WithError(err).Error("Error getting SnapshotID")
 			return c.fail(req, errors.Wrap(err, "error getting snapshot id").Error(), log)

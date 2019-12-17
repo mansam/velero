@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -269,6 +270,11 @@ func (rm *repositoryManager) exec(cmd *Command, backupLocation string) error {
 				}
 				//defer os.Remove(caFile)
 			}
+			insecure, err := strconv.ParseBool(bsl.Spec.Config["insecure"])
+			if err != nil {
+				return err
+			}
+			cmd.SkipSSLVerify = insecure
 		}
 	}
 

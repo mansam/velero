@@ -30,6 +30,7 @@ type Command struct {
 	RepoIdentifier string
 	PasswordFile   string
 	CABundleFile   string
+	SkipSSLVerify  bool
 	Dir            string
 	Args           []string
 	ExtraFlags     []string
@@ -55,7 +56,9 @@ func (c *Command) StringSlice() []string {
 	if c.CABundleFile != "" {
 		res = append(res, caCertFlag(c.CABundleFile))
 	}
-
+	if c.SkipSSLVerify {
+		res = append(res, "--skip-ssl-verify")
+	}
 	// If VELERO_SCRATCH_DIR is defined, put the restic cache within it. If not,
 	// allow restic to choose the location. This makes running either in-cluster
 	// or local (dev) work properly.
