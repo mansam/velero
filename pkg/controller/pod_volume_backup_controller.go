@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -226,6 +227,21 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 		req.Spec.Tags,
 	)
 
+	var skipSSLVerify bool
+	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
+		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+		if err != nil {
+			log.WithError(err).Errorf("Error getting BackupStorageLocation %s", req.Spec.BackupStorageLocation)
+			return errors.WithStack(err)
+		}
+		skipSSLVerify, err = strconv.ParseBool(bsl.Spec.Config["skipSSLVerify"])
+		if err != nil {
+			log.WithError(err).Error("error parsing skipSSLVerify (expected bool)")
+			return errors.WithStack(err)
+		}
+		resticCmd.SkipSSLVerify = skipSSLVerify
+	}
+
 	// if this is azure, set resticCmd.Env appropriately
 	var env []string
 	if strings.HasPrefix(req.Spec.RepoIdentifier, "azure") {
@@ -250,7 +266,7 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 
 	var snapshotID string
 	if !emptySnapshot {
-		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env)
+		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env, skipSSLVerify)
 		if err != nil {
 			log.WithError(err).Error("Error getting SnapshotID")
 			return c.fail(req, errors.Wrap(err, "error getting snapshot id").Error(), log)

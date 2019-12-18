@@ -17,7 +17,9 @@ limitations under the License.
 package aws
 
 import (
+	"crypto/tls"
 	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"time"
@@ -43,6 +45,7 @@ const (
 	bucketKey            = "bucket"
 	signatureVersionKey  = "signatureVersion"
 	credentialProfileKey = "profile"
+	skipSSLVerifyKey     = "skipSSLVerify"
 )
 
 type s3Interface interface {
@@ -83,6 +86,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		s3ForcePathStyleKey,
 		signatureVersionKey,
 		credentialProfileKey,
+		skipSSLVerifyKey,
 	); err != nil {
 		return err
 	}
@@ -95,19 +99,26 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		s3ForcePathStyleVal = config[s3ForcePathStyleKey]
 		signatureVersion    = config[signatureVersionKey]
 		credentialProfile   = config[credentialProfileKey]
-
+		skipSSLVerifyVal    = config[skipSSLVerifyKey]
 		// note that bucket is automatically added to the config map
 		// by the server from the ObjectStorageProviderConfig so
 		// doesn't need to be explicitly set by the user within
 		// config.
 		bucket           = config[bucketKey]
 		s3ForcePathStyle bool
+		skipSSLVerify    bool
 		err              error
 	)
 
 	if s3ForcePathStyleVal != "" {
 		if s3ForcePathStyle, err = strconv.ParseBool(s3ForcePathStyleVal); err != nil {
 			return errors.Wrapf(err, "could not parse %s (expected bool)", s3ForcePathStyleKey)
+		}
+	}
+
+	if skipSSLVerifyVal != "" {
+		if skipSSLVerify, err = strconv.ParseBool(skipSSLVerifyVal); err != nil {
+			return errors.Wrapf(err, "could not parse %s (expected bool)", skipSSLVerifyKey)
 		}
 	}
 
@@ -122,7 +133,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		}
 	}
 
-	serverConfig, err := newAWSConfig(s3URL, region, s3ForcePathStyle)
+	serverConfig, err := newAWSConfig(s3URL, region, s3ForcePathStyle, skipSSLVerify)
 	if err != nil {
 		return err
 	}
@@ -160,10 +171,15 @@ func (o *ObjectStore) Init(config map[string]string) error {
 	return nil
 }
 
-func newAWSConfig(url, region string, forcePathStyle bool) (*aws.Config, error) {
+func newAWSConfig(url, region string, forcePathStyle bool, skipSSLVerify bool) (*aws.Config, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipSSLVerify},
+	}
+	client := &http.Client{Transport: transport}
 	awsConfig := aws.NewConfig().
 		WithRegion(region).
-		WithS3ForcePathStyle(forcePathStyle)
+		WithS3ForcePathStyle(forcePathStyle).
+		WithHTTPClient(client)
 
 	if url != "" {
 		if !IsValidS3URLScheme(url) {

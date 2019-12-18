@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -255,11 +256,21 @@ func (rm *repositoryManager) exec(cmd *Command, backupLocation string) error {
 
 	cmd.PasswordFile = file
 
-	if strings.HasPrefix(cmd.RepoIdentifier, "azure") {
-		if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {
-			return errors.New("timed out waiting for cache to sync")
+	if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {
+		return errors.New("timed out waiting for cache to sync")
+	}
+	if strings.HasPrefix(cmd.RepoIdentifier, "s3") {
+		bsl, err := rm.backupLocationLister.BackupStorageLocations(rm.Namespace).Get(backupLocation)
+		if err != nil {
+			return err
 		}
-
+		skipSSLVerify, err := strconv.ParseBool(bsl.Spec.Config["skipSSLVerify"])
+		if err != nil {
+			return err
+		}
+		cmd.SkipSSLVerify = skipSSLVerify
+	}
+	if strings.HasPrefix(cmd.RepoIdentifier, "azure") {
 		env, err := AzureCmdEnv(rm.backupLocationLister, rm.namespace, backupLocation)
 		if err != nil {
 			return err

@@ -33,6 +33,7 @@ type Command struct {
 	Args           []string
 	ExtraFlags     []string
 	Env            []string
+	SkipSSLVerify  bool
 }
 
 func (c *Command) RepoName() string {
@@ -50,6 +51,9 @@ func (c *Command) StringSlice() []string {
 	res = append(res, c.Command, repoFlag(c.RepoIdentifier))
 	if c.PasswordFile != "" {
 		res = append(res, passwordFlag(c.PasswordFile))
+	}
+	if c.SkipSSLVerify {
+		res = append(res, "--skip-ssl-verify")
 	}
 
 	// If VELERO_SCRATCH_DIR is defined, put the restic cache within it. If not,

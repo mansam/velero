@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -327,6 +328,20 @@ func (c *podVolumeRestoreController) restorePodVolume(req *velerov1api.PodVolume
 		req.Spec.SnapshotID,
 		volumePath,
 	)
+
+	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
+		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+		if err != nil {
+			log.WithError(err).Errorf("Error getting BackupStorageLocation %s", req.Spec.BackupStorageLocation)
+			return errors.WithStack(err)
+		}
+		skipSSLVerify, err := strconv.ParseBool(bsl.Spec.Config["skipSSLVerify"])
+		if err != nil {
+			log.WithError(err).Error("error parsing skipSSLVerify (expected bool)")
+			return errors.WithStack(err)
+		}
+		resticCmd.SkipSSLVerify = skipSSLVerify
+	}
 
 	// if this is azure, set resticCmd.Env appropriately
 	if strings.HasPrefix(req.Spec.RepoIdentifier, "azure") {
