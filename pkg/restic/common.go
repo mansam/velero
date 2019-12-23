@@ -17,6 +17,7 @@ limitations under the License.
 package restic
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -180,6 +181,35 @@ func TempCredentialsFile(secretLister corev1listers.SecretLister, veleroNamespac
 	}
 
 	if _, err := file.Write(repoKey); err != nil {
+		// nothing we can do about an error closing the file here, and we're
+		// already returning an error about the write failing.
+		file.Close()
+		return "", errors.WithStack(err)
+	}
+
+	name := file.Name()
+
+	if err := file.Close(); err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	return name, nil
+}
+
+// TempCABundleFile. The
+// caller should generally call os.Remove() to remove the file
+// when done with it.
+func TempCABundleFile(backupStorageLocation *velerov1api.BackupStorageLocation, repoName string, fs filesystem.Interface) (string, error) {
+	file, err := fs.TempFile("", fmt.Sprintf("%s-%s", "caBundle", repoName))
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	customCABundle, err := base64.StdEncoding.DecodeString(backupStorageLocation.Spec.Config["customCABundle"])
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	if _, err := file.Write(customCABundle); err != nil {
 		// nothing we can do about an error closing the file here, and we're
 		// already returning an error about the write failing.
 		file.Close()

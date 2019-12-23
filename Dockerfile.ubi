@@ -5,11 +5,12 @@ RUN cd /go/src/github.com/heptio/velero \
 
 RUN mkdir /go/src/github.com/restic \
 && cd /go/src/github.com/restic \
-&& git clone https://github.com/fusor/restic -b fusor-v0.9.4 \
+&& git clone https://github.com/mansam/restic -b skip-ssl-verify \
 && cd /go/src/github.com/restic/restic \
 && CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' ./cmd/restic
 
 FROM registry.access.redhat.com/ubi8-minimal
+RUN microdnf -y install nmap-ncat && microdnf clean all
 RUN microdnf -y update && microdnf clean all
 
 COPY --from=builder /go/src/github.com/heptio/velero/velero velero

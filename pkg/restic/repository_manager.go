@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -254,6 +255,28 @@ func (rm *repositoryManager) exec(cmd *Command, backupLocation string) error {
 	defer os.Remove(file)
 
 	cmd.PasswordFile = file
+
+	if strings.HasPrefix(cmd.RepoIdentifier, "s3") {
+		if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {
+			return errors.New("timed out waiting for cache to sync")
+		}
+		bsl, err := rm.backupLocationLister.BackupStorageLocations(rm.namespace).Get(backupLocation)
+		if (bsl != nil) && (err == nil) {
+			if bsl.Spec.Config["customCABundle"] != "" {
+				caFileName, err := TempCABundleFile(bsl, cmd.RepoName(), rm.fileSystem)
+				cmd.CABundleFile = caFileName
+				if err != nil {
+					return err
+				}
+				//defer os.Remove(caFile)
+			}
+			insecure, err := strconv.ParseBool(bsl.Spec.Config["insecure"])
+			if err != nil {
+				return err
+			}
+			cmd.SkipSSLVerify = insecure
+		}
+	}
 
 	if strings.HasPrefix(cmd.RepoIdentifier, "azure") {
 		if !cache.WaitForCacheSync(rm.ctx.Done(), rm.backupLocationInformerSynced) {

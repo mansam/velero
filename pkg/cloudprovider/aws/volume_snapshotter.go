@@ -49,9 +49,8 @@ type VolumeSnapshotter struct {
 }
 
 // takes AWS credential config & a profile to create a new session
-func getSession(config *aws.Config, profile string) (*session.Session, error) {
-	sessionOptions := session.Options{Config: *config, Profile: profile}
-	sess, err := session.NewSessionWithOptions(sessionOptions)
+func getSession(options *session.Options) (*session.Session, error) {
+	sess, err := session.NewSessionWithOptions(*options)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -79,8 +78,12 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 	}
 
 	awsConfig := aws.NewConfig().WithRegion(region)
+	sessionOptions := session.Options{
+		Config:                  *awsConfig,
+		Profile:                 credentialProfile,
+	}
 
-	sess, err := getSession(awsConfig, credentialProfile)
+	sess, err := getSession(&sessionOptions)
 	if err != nil {
 		return err
 	}

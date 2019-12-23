@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -327,6 +328,25 @@ func (c *podVolumeRestoreController) restorePodVolume(req *velerov1api.PodVolume
 		req.Spec.SnapshotID,
 		volumePath,
 	)
+
+	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
+		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+		if (bsl != nil) && (err == nil) {
+			//if bsl.Spec.Config["customCABundle"] != "" {
+			//	caFileName, err := restic.TempCABundleFile(bsl, resticCmd.RepoName(), c.fileSystem)
+			//	resticCmd.CABundleFile = caFileName
+			//	if err != nil {
+			//		return err
+			//	}
+			//	//defer os.Remove(caFile)
+			//}
+			insecure, err := strconv.ParseBool(bsl.Spec.Config["insecure"])
+			if err != nil {
+				return err
+			}
+			resticCmd.SkipSSLVerify = insecure
+		}
+	}
 
 	// if this is azure, set resticCmd.Env appropriately
 	if strings.HasPrefix(req.Spec.RepoIdentifier, "azure") {

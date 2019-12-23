@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -218,6 +219,10 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 	}
 	// ignore error since there's nothing we can do and it's a temp file.
 	defer os.Remove(file)
+	//loc, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+	//if err != nil {
+	//	return nil, errors.Wrap(err, "error getting backup storage location")
+	//}
 
 	resticCmd := restic.BackupCommand(
 		req.Spec.RepoIdentifier,
@@ -225,6 +230,25 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 		path,
 		req.Spec.Tags,
 	)
+	insecure := false
+	if strings.HasPrefix(req.Spec.RepoIdentifier, "s3") {
+		bsl, err := c.backupLocationLister.BackupStorageLocations(req.Namespace).Get(req.Spec.BackupStorageLocation)
+		if (bsl != nil) && (err == nil) {
+			if bsl.Spec.Config["customCABundle"] != "" {
+				caFileName, err := restic.TempCABundleFile(bsl, resticCmd.RepoName(), c.fileSystem)
+				resticCmd.CABundleFile = caFileName
+				if err != nil {
+					return err
+				}
+				//defer os.Remove(caFile)
+			}
+			insecure, err = strconv.ParseBool(bsl.Spec.Config["insecure"])
+			if err != nil {
+				return err
+			}
+			resticCmd.SkipSSLVerify = insecure
+		}
+	}
 
 	// if this is azure, set resticCmd.Env appropriately
 	var env []string
@@ -250,7 +274,7 @@ func (c *podVolumeBackupController) processBackup(req *velerov1api.PodVolumeBack
 
 	var snapshotID string
 	if !emptySnapshot {
-		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env)
+		snapshotID, err = restic.GetSnapshotID(req.Spec.RepoIdentifier, file, req.Spec.Tags, env, insecure)
 		if err != nil {
 			log.WithError(err).Error("Error getting SnapshotID")
 			return c.fail(req, errors.Wrap(err, "error getting snapshot id").Error(), log)
